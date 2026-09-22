@@ -1,7 +1,6 @@
 from csv import reader
 import math
 import numpy as np
-import pandas as pd
 import json
 
 # Returns true if value is a perfect square

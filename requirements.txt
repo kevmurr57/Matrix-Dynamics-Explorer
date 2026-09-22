@@ -4,7 +4,6 @@ Django==5.2.6
 # Numerical core
 numpy==2.3.3
 scipy==1.16.2
-pandas==2.3.2
 
 # Model helper: non-sequential primary keys
 django-random-id-model==0.1.1
