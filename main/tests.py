@@ -41,11 +41,15 @@ class ParseTestCase(TestCase):
         self.assertEqual(ans, 11)
 
     # tests parse poly with matrix
+    # For a matrix polynomial the constant term is c*I, not an elementwise
+    # scalar add, which is what AdditionNode has always implemented. So
+    # 2A + 1 over [[1,2],[3,4]] is [[2,4],[6,8]] + [[1,0],[0,1]].
+    # This case previously asserted the elementwise result [[3,5],[7,9]].
     def testParsePolyMat(self):
         poly = ParseTree()
         poly.parsePoly(poly='2x + 1')
         ans = poly.callPoly(np.asarray(a=[[1, 2], [3, 4]]))
-        self.assertTrue(np.array_equal(ans, np.asarray(a=[[3, 5], [7, 9]])))
+        self.assertTrue(np.array_equal(ans, np.asarray(a=[[3, 4], [6, 9]])))
 
     # tests parse poly with negative
     def testParsePolyMinus(self):
@@ -223,6 +227,68 @@ class ParseTestCase(TestCase):
             values.append(allMatrices)
         toCsv(values, "bigOutputTest.csv")
 
+class PolynomialValidationTestCase(TestCase):
+    """verifyPoly() is the only guard in front of the parser, so anything it
+    calls 'Valid' must actually parse. These cases previously passed
+    validation and then crashed the parser with an IndexError, which surfaced
+    as an unhandled 500."""
+
+    # parentheses were validated by counting only, so ")(" had one of each
+    # and was accepted even though the order is nonsense
+    def testRejectsReversedParens(self):
+        self.assertNotEqual(ParseTree().verifyPoly(')('), 'Valid')
+
+    def testRejectsUnorderedParens(self):
+        self.assertNotEqual(ParseTree().verifyPoly('(()))('), 'Valid')
+
+    def testRejectsEmptyParenPair(self):
+        self.assertNotEqual(ParseTree().verifyPoly('x+()'), 'Valid')
+
+    def testRejectsUnclosedParen(self):
+        self.assertNotEqual(ParseTree().verifyPoly('((x+1)'), 'Valid')
+
+    def testRejectsUnopenedParen(self):
+        self.assertNotEqual(ParseTree().verifyPoly('x+1)'), 'Valid')
+
+    # a leading '-' is a unary sign and cleanPoly rewrites it as "-1*x",
+    # so the validator must not reject it as a dangling operator
+    def testAcceptsLeadingNegative(self):
+        self.assertEqual(ParseTree().verifyPoly('-x+3'), 'Valid')
+
+    def testAcceptsLeadingNegativeCoefficient(self):
+        self.assertEqual(ParseTree().verifyPoly('-5x^2'), 'Valid')
+
+    def testAcceptsLeadingNegativeParen(self):
+        self.assertEqual(ParseTree().verifyPoly('-(x+1)'), 'Valid')
+
+    # ...but a bare sign has no term after it
+    def testRejectsBareMinus(self):
+        self.assertNotEqual(ParseTree().verifyPoly('-'), 'Valid')
+
+    def testRejectsLeadingPlus(self):
+        self.assertNotEqual(ParseTree().verifyPoly('+x'), 'Valid')
+
+    # the contract that matters: validator and parser must agree
+    def testEverythingValidActuallyParses(self):
+        candidates = [
+            'x^2+1', '(x+1)*(x-1)', '5x', '((x))', '2*(x^2-4)/2',
+            '-x+3', '-5x^2', '-(x+1)', 'x/2', '3x^2-2x+1',
+            ')(', '(()))(', 'x+()', '((x+1)', 'x+1)', '', '-', '+x',
+            'x^^2', '5//x', 'x+', '*x',
+        ]
+        for poly in candidates:
+            tree = ParseTree()
+            if tree.verifyPoly(poly) != 'Valid':
+                continue
+            try:
+                ParseTree().parsePoly(poly)
+            except Exception as exc:
+                self.fail(
+                    f"verifyPoly accepted {poly!r} but parsePoly raised "
+                    f"{type(exc).__name__}: {exc}"
+                )
+
+
 class ViewsTestCase(TestCase):
 
     # test whether Views can return the index page
@@ -332,7 +398,7 @@ class ViewsTestCase(TestCase):
         IterationStep.objects.create(iterationID=i, value=5, step=0)
         IterationStep.objects.create(iterationID=i, value=7, step=1)
 
-        getResponse = c.get('/fetchNumber/', json.dumps({'loadingID': i.id}), content_type='application/json')
+        getResponse = c.generic('GET', '/fetchNumber/', json.dumps({'id': i.id}), content_type='application/json')
 
         self.assertEqual(getResponse.status_code, 200)
 

@@ -211,21 +211,35 @@ class ParseTree():
             if not c.isdigit() and c not in tokens:
                 return "Invalid Token Error"
             
-        # check if parens do not match
-        parens = dict()
-        parens['('] = 0
-        parens[')'] = 0
-
+        # check that parentheses are balanced *and* correctly ordered.
+        # Counting alone is not enough: ")(" has one of each but is invalid,
+        # and the parser will crash on it. Track depth and reject as soon as
+        # it goes negative, which means a ')' arrived before its '('.
+        depth = 0
         for c in poly:
-            if c in ['(', ')']:
-                parens[c] += 1
+            if c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+                if depth < 0:
+                    return "Parentheses Mismatch Error"
 
-        if parens['('] != parens[')']:
+        if depth != 0:
+            return "Parentheses Mismatch Error"
+
+        # an empty pair contains no expression for the parser to build
+        if '()' in poly:
             return "Parentheses Mismatch Error"
         
         # check if an operator is put in the wrong spot
         operators = ['^', '/', '*', '+', '-']
         for i, c in enumerate(poly):
+            # A leading '-' is a unary sign rather than a dangling operator,
+            # but only when a term actually follows it: cleanPoly() rewrites
+            # "-x" as "-1*x". A bare "-" or a leading "+" has no such handling.
+            if (i == 0 and c == '-' and len(poly) > 1
+                    and (poly[1].isdigit() or poly[1] == 'x' or poly[1] == '(')):
+                continue
             if c in operators and (i == 0 or i == len(poly) - 1):
                 return "Invalid Operation Error"
             if c == '-' and poly[i+1] == '+':

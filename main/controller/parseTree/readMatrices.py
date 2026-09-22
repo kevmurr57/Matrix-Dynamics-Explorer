@@ -8,12 +8,25 @@ import json
 def checkSquare(length):
     return (math.sqrt(length) * math.sqrt(length)) == length
 
-# Reshape array into matrix of type numpyarray
+# Reshape a flat set of values into a square numpy matrix.
+# Accepts either a comma-separated string ("1,0,0,1") or an already-split
+# sequence (["1", "0", "0", "1"]); readFile passes the latter.
 def convert(matrix):
-    print("this matrix:")
-    nMatrix = np.fromstring(matrix, dtype=float, sep=',') 
-    newMatrix = np.reshape(nMatrix, (int(math.sqrt(len(nMatrix))), int(math.sqrt(len(nMatrix)))))
-    return np.asarray(newMatrix).astype(float)
+    if isinstance(matrix, (str, bytes)):
+        text = matrix.decode() if isinstance(matrix, bytes) else matrix
+        values = [v for v in text.split(',') if v.strip() != '']
+    else:
+        values = [v for v in matrix if str(v).strip() != '']
+
+    flat = np.asarray([float(v) for v in values], dtype=float)
+
+    side = math.isqrt(len(flat))
+    if side * side != len(flat):
+        raise ValueError(
+            f"expected a square matrix, got {len(flat)} values"
+        )
+
+    return flat.reshape(side, side)
 
 # Takes a filename and returns list of all matrices
 # Return type is numpy array of integers
@@ -26,9 +39,6 @@ def readFile(fileName):
             current += 1
             validLength = checkSquare(len(matrix))
             if validLength:
-                for row in matrix:
-                    for value in row:
-                        value = float(value)
                 longMatrix = convert(matrix)
                 matrices.append(np.asarray(longMatrix))
             else:

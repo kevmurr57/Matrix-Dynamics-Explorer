@@ -77,15 +77,25 @@ class MaxIteration():
     def diverges(self, results, threshold):
         if type(results[0]) == str and (results[0].isdigit() or results[0].replace('.','',1).isdigit()):
             return float(results[-1]) - float(results[-2]) > threshold
-        # print(results[len(results)-1] - results[len(results)-2])
-        if type(results[0] == str):
-            results[-1] = json.loads(results[-1])
-            results[-2] = json.loads(results[-2])
-            results[-1] = np.asarray(results[-1])
-            results[-2] = np.asarray(results[-2])
+        # NOTE: this was `type(results[0] == str)`, which takes the type of the
+        # comparison's result and is therefore always truthy. The branch ran
+        # unconditionally and called json.loads() on values that were already
+        # ndarrays. Only decode entries that are genuinely still strings.
+        # A delta needs two samples. The original code indexed
+        # results[len(results)-2], which for a single result wrapped around to
+        # the same element and reported a difference of zero; keep that
+        # "not diverged" outcome explicit rather than relying on the wrap.
+        if len(results) < 2:
+            return False
 
+        last, prev = results[-1], results[-2]
 
-        return abs(np.linalg.norm(results[len(results)-1]) - np.linalg.norm(results[len(results)-2])) > threshold
+        if isinstance(last, str):
+            last = np.asarray(json.loads(last))
+        if isinstance(prev, str):
+            prev = np.asarray(json.loads(prev))
+
+        return abs(np.linalg.norm(last) - np.linalg.norm(prev)) > threshold
     
     def showIteration(current, end):
         ## Line below is placeholder until we have frontend working

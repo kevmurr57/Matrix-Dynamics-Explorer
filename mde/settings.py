@@ -10,32 +10,65 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 
-from pathlib import Path
-#import dotenv
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECURE_HSTS_SECONDS = 3600
-SECURE_SSL_REDIRECT = False
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-CSRF_TRUSTED_ORIGINS = ['https://mde.up.railway.app']
+# Load a local .env if present. Real deployments set env vars directly.
+load_dotenv(BASE_DIR / '.env')
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-#dotenv.load_dotenv()
-SECRET_KEY = 'django-insecure-zs9=ybdh7mt3y3tcda79^esv_h+4=#h0ykwjjy%h-=lihn3&1n'
+def _env_list(name, default=''):
+    """Read a comma-separated env var into a list, ignoring blanks."""
+    return [item.strip() for item in os.environ.get(name, default).split(',') if item.strip()]
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
-#DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
 
-ALLOWED_HOSTS = ['*']
+# DEBUG defaults to off: a missing or misspelled env var must not expose
+# tracebacks in production.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ('1', 'true', 'yes')
+
+# SECURITY: the key must come from the environment in production. The
+# previous hardcoded key is in this repository's git history and is
+# permanently compromised — never reuse it.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+
+if not SECRET_KEY:
+    if DEBUG:
+        # Ephemeral key so local development works with no setup. It changes
+        # each restart, which invalidates sessions — that is fine locally.
+        from django.core.management.utils import get_random_secret_key
+
+        SECRET_KEY = get_random_secret_key()
+    else:
+        raise RuntimeError(
+            'DJANGO_SECRET_KEY must be set when DEBUG is off. '
+            'Generate one with: '
+            'python -c "from django.core.management.utils import '
+            'get_random_secret_key as k; print(k())"'
+        )
+
+# Hosts this app is allowed to serve. Defaults cover local development only;
+# set DJANGO_ALLOWED_HOSTS to your real domain when deploying.
+ALLOWED_HOSTS = _env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]')
+
+# Origins trusted for CSRF (scheme required), e.g. https://example.com
+CSRF_TRUSTED_ORIGINS = _env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
+
+# HTTPS-dependent protections are enabled only outside DEBUG, so local
+# development over plain HTTP still works.
+SECURE_HSTS_SECONDS = 3600 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SECURE_SSL_REDIRECT', 'False').lower() in ('1', 'true', 'yes')
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
+# Most hosts terminate TLS at a proxy and forward this header.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -131,7 +164,21 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.1/howto/static-files/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Manifest storage adds cache-busting hashes but requires collectstatic to
+# have produced a manifest, which is not the case in development or under
+# the test runner. Use the plain compressed backend there.
+_STATICFILES_BACKEND = (
+    'whitenoise.storage.CompressedStaticFilesStorage'
+    if DEBUG
+    else 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+)
+
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': _STATICFILES_BACKEND},
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
