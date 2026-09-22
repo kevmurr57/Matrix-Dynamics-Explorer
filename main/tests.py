@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.db import transaction
 from .controller.parseTree.parseTree import ParseTree
 import numpy as np
-from .controller.parseTree.maxIteration import MaxIteration
+from .controller.parseTree.maxIteration import MaxIteration, decodeValue
 from .controller.parseTree.readMatrices import readFile
 from .controller.parseTree.outputCsv import toCsv
 import json
@@ -287,6 +287,63 @@ class PolynomialValidationTestCase(TestCase):
                     f"verifyPoly accepted {poly!r} but parsePoly raised "
                     f"{type(exc).__name__}: {exc}"
                 )
+
+
+class IterationValueTestCase(TestCase):
+    """Stored iteration values are text, so they must be classified correctly
+    on the way back in. The old str.isdigit() sniffing only recognised plain
+    digits, so negatives and scientific notation fell through to the matrix
+    branch and became 0-d numpy arrays, which crash on x.shape[0]."""
+
+    def testDecodesPlainInteger(self):
+        self.assertEqual(decodeValue('5'), 5)
+
+    def testDecodesDecimal(self):
+        self.assertAlmostEqual(decodeValue('0.125'), 0.125)
+
+    def testDecodesNegative(self):
+        self.assertAlmostEqual(decodeValue('-1.5'), -1.5)
+
+    def testDecodesScientificNotation(self):
+        self.assertAlmostEqual(decodeValue('6.103515625e-05'), 6.103515625e-05)
+
+    def testDecodesLargeScientificNotation(self):
+        self.assertAlmostEqual(decodeValue('1.2676506002282294e+30'), 1.2676506002282294e+30)
+
+    def testScalarsNeverBecomeZeroDimArrays(self):
+        for raw in ['5', '0.125', '-1.5', '6.1e-05', '1.26e+30']:
+            value = decodeValue(raw)
+            self.assertNotIsInstance(value, np.ndarray, f'{raw!r} decoded to an array')
+
+    def testDecodesMatrix(self):
+        value = decodeValue('[[1, 2], [3, 4]]')
+        self.assertIsInstance(value, np.ndarray)
+        self.assertEqual(value.shape, (2, 2))
+
+    # a sequence converging toward zero reaches scientific notation around
+    # step 15 and used to crash there
+    def testConvergingScalarRunCompletes(self):
+        iteration = Iteration(polynomial='0.5x', maxIteration=40,
+                              startValue='2.0', threshold=1e-9)
+        iteration.save()
+        results = MaxIteration().allIterations(iteration)
+        self.assertEqual(len(results), 40)
+
+    # negative values failed isdigit() immediately
+    def testNegativeScalarRunCompletes(self):
+        iteration = Iteration(polynomial='x-1', maxIteration=20,
+                              startValue='3.0', threshold=1e-9)
+        iteration.save()
+        results = MaxIteration().allIterations(iteration)
+        self.assertEqual(len(results), 20)
+
+    # growth past 1e16 also renders in scientific notation
+    def testDivergingScalarRunCompletes(self):
+        iteration = Iteration(polynomial='2x', maxIteration=80,
+                              startValue='1.0', threshold=1e-9)
+        iteration.save()
+        results = MaxIteration().allIterations(iteration)
+        self.assertEqual(len(results), 80)
 
 
 class ViewsTestCase(TestCase):

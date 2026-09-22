@@ -96,6 +96,7 @@ own static files through WhiteNoise, so it runs on any host that can start a WSG
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames, e.g. `example.com` |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | Comma-separated origins with scheme, e.g. `https://example.com` |
 | `DJANGO_SECURE_SSL_REDIRECT` | `True` only if your host does not already force HTTPS |
+| `DATABASE_URL` | Optional. Set to a Postgres URL to move off SQLite; unset uses local SQLite |
 
 ```bash
 python manage.py migrate
@@ -111,9 +112,11 @@ python -c "from django.core.management.utils import get_random_secret_key as k; 
 
 ## Notes
 
-The default database is SQLite, which is fine for a single instance but does not survive the
-ephemeral filesystems most platforms-as-a-service use. Point `DATABASES` at Postgres if runs need
-to persist across deploys.
+The default database is SQLite, running in WAL mode so the browser can poll progress while a
+background thread writes results. That is fine for a single instance, but most
+platforms-as-a-service use ephemeral filesystems, so saved runs reset on each deploy. Set
+`DATABASE_URL` to a Postgres connection string if runs need to persist — no code change is
+required.
 
 Iteration work currently runs in a thread inside the web process. That is adequate for modest
 workloads but has no retry or cross-process visibility; a task queue would be the next step.

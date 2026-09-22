@@ -4,6 +4,44 @@ import json
 import numpy as np
 from django.core.exceptions import ObjectDoesNotExist
 
+
+def decodeValue(raw):
+    """Turn a stored iteration value back into a number or a numpy matrix.
+
+    Values are persisted as text, so they have to be classified on the way
+    back in. This previously sniffed the string with str.isdigit(), which
+    only recognises plain digits: it rejected negative numbers ("-1.0") and
+    scientific notation ("6.1e-05"), both of which a scalar run produces
+    almost immediately. Those fell through to the matrix branch and became
+    0-d numpy arrays, which blow up on x.shape[0].
+
+    Try to read it as a number first, and only treat it as a matrix if that
+    genuinely fails.
+    """
+    if not isinstance(raw, str):
+        return raw
+
+    text = raw.strip()
+
+    try:
+        return int(text)
+    except ValueError:
+        pass
+
+    try:
+        return float(text)
+    except ValueError:
+        pass
+
+    decoded = np.asarray(json.loads(text))
+
+    # json.loads("1e-5") yields a scalar, which np.asarray makes 0-d;
+    # unwrap it rather than handing a shapeless array to the matrix path.
+    if decoded.ndim == 0:
+        return decoded.item()
+
+    return decoded
+
 class MaxIteration():
 
     def __init__(self):
@@ -17,14 +55,8 @@ class MaxIteration():
         poly.parsePoly(poly=iteration.polynomial)
 
         # insert first iteration step
-        startValue = iteration.startValue 
-        if startValue.isdigit():
-            startValue = int(startValue)
-        elif startValue.replace('.','',1).isdigit():
-            startValue = float(startValue)
-        else:
-            startValue = list(json.loads(startValue))
-            startValue = np.asarray(startValue)
+        startValue = decodeValue(iteration.startValue)
+        if isinstance(startValue, np.ndarray):
             startValue = startValue.astype('float32')
 
         value = poly.callPoly(startValue)
@@ -38,21 +70,22 @@ class MaxIteration():
         
         first.save()
 
-        while i < iteration.maxIteration:
-            ## showIteration(i, maxVal)
-            iteration.currentIteration = i
-            iteration.save()
-            previousSet = IterationStep.objects.filter(iterationID=iteration.id)
-            previous = previousSet.get(step=i-1)
-            prevValue = previous.value 
+        # The previous step is already in hand from the last pass, so keep it in
+        # memory instead of re-reading it from the database every iteration.
+        prevStored = first.value
 
-            if prevValue.isdigit():
-                prevValue = int(prevValue)
-            elif prevValue.replace('.','',1).isdigit():
-                prevValue = float(prevValue)
-            else:
-                prevValue = json.loads(prevValue)
-                prevValue = np.asarray(prevValue)
+        # Progress is polled by the browser, so it has to be written to the
+        # database — but not on every single step. One write per iteration
+        # meant a 1,000-step run issued 1,000 progress writes on top of its
+        # 1,000 result writes, which is what makes SQLite lock up.
+        PROGRESS_EVERY = 25
+
+        while i < iteration.maxIteration:
+            if i % PROGRESS_EVERY == 0:
+                iteration.currentIteration = i
+                iteration.save(update_fields=['currentIteration'])
+
+            prevValue = decodeValue(prevStored)
 
             newValue = poly.callPoly(prevValue)
             if type(newValue) == int or type(newValue) == float:
@@ -65,6 +98,7 @@ class MaxIteration():
             
             res.append(newStep.value)
             newStep.save()
+            prevStored = newStep.value
             i += 1
         
         iteration.currentIteration = i
@@ -75,8 +109,13 @@ class MaxIteration():
     
     # Based on results checks to see if threshold is reached
     def diverges(self, results, threshold):
-        if type(results[0]) == str and (results[0].isdigit() or results[0].replace('.','',1).isdigit()):
-            return float(results[-1]) - float(results[-2]) > threshold
+        # Scalar runs compare magnitudes. The difference is taken in absolute
+        # value: without it a rapidly decreasing sequence produced a negative
+        # difference, which is always below the threshold and so was
+        # misreported as converged.
+        firstValue = decodeValue(results[0])
+        if isinstance(firstValue, (int, float)):
+            return abs(float(decodeValue(results[-1])) - float(decodeValue(results[-2]))) > threshold
         # NOTE: this was `type(results[0] == str)`, which takes the type of the
         # comparison's result and is therefore always truthy. The branch ran
         # unconditionally and called json.loads() on values that were already
@@ -90,10 +129,8 @@ class MaxIteration():
 
         last, prev = results[-1], results[-2]
 
-        if isinstance(last, str):
-            last = np.asarray(json.loads(last))
-        if isinstance(prev, str):
-            prev = np.asarray(json.loads(prev))
+        last = decodeValue(last)
+        prev = decodeValue(prev)
 
         return abs(np.linalg.norm(last) - np.linalg.norm(prev)) > threshold
     

@@ -118,15 +118,32 @@ WSGI_APPLICATION = 'mde.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
+# SQLite by default. Set DATABASE_URL (e.g. a Postgres URL) to move the
+# database off the local disk without touching code — useful on hosts with
+# ephemeral filesystems, where SQLite is wiped on every deploy.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
         'OPTIONS': {
-            'timeout': 5
-        }
+            # Wait rather than failing immediately when another connection
+            # holds the write lock.
+            'timeout': 20,
+            # WAL lets readers proceed during a write, which matters because
+            # iteration runs write continuously in a background thread while
+            # the browser polls for progress.
+            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;',
+        },
     }
 }
+
+if os.environ.get('DATABASE_URL'):
+    import dj_database_url
+
+    DATABASES['default'] = dj_database_url.config(
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
 
 
 # Password validation
