@@ -65,3 +65,70 @@ def csvToMatrices(csv):
     return matrices
 
 
+# Limits for uploaded batches. csvPoly creates a database row and a worker
+# thread per line, so an unbounded file is a denial-of-service vector as well
+# as a usability problem.
+MAX_CSV_BYTES = 1024 * 1024
+MAX_CSV_ROWS = 500
+MAX_MATRIX_SIDE = 10
+
+
+def validateCsvUpload(uploaded):
+    """Check an uploaded CSV of flattened square matrices.
+
+    Returns None when the file is usable, otherwise a message explaining the
+    first problem found. csvToMatrices does no checking of its own: it reshapes
+    whatever it is given, so a malformed row silently produces a wrong matrix.
+    """
+    if uploaded is None:
+        return 'No file selected'
+
+    name = (getattr(uploaded, 'name', '') or '').lower()
+    if name and not name.endswith('.csv'):
+        return 'File must be a .csv'
+
+    size = getattr(uploaded, 'size', None)
+    if size is not None and size > MAX_CSV_BYTES:
+        return f'File is too large (limit {MAX_CSV_BYTES // 1024} KB)'
+
+    try:
+        raw = uploaded.read()
+    finally:
+        # The caller still needs to parse this file, so rewind it.
+        if hasattr(uploaded, 'seek'):
+            uploaded.seek(0)
+
+    if isinstance(raw, bytes):
+        try:
+            raw = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            return 'File must be UTF-8 encoded text'
+
+    rows = [line for line in raw.replace('\r', '').split('\n') if line.strip()]
+
+    if not rows:
+        return 'File is empty'
+
+    if len(rows) > MAX_CSV_ROWS:
+        return f'Too many rows (limit {MAX_CSV_ROWS})'
+
+    for number, line in enumerate(rows, start=1):
+        values = [v.strip() for v in line.split(',')]
+
+        for value in values:
+            try:
+                float(value)
+            except ValueError:
+                return f'Line {number}: "{value}" is not a number'
+
+        side = math.isqrt(len(values))
+        if side * side != len(values):
+            return (
+                f'Line {number}: {len(values)} values do not form a square '
+                f'matrix'
+            )
+
+        if side > MAX_MATRIX_SIDE:
+            return f'Line {number}: matrix is larger than {MAX_MATRIX_SIDE}x{MAX_MATRIX_SIDE}'
+
+    return None

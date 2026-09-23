@@ -11,6 +11,7 @@ urlpatterns = [
     path('fetchOutput/', views.fetchOutput),
     path('matrixPoly/', views.matrixPoly),
     path('csvPoly/', views.csvPoly),
+    path('verifyFile/', views.verifyFile),
     path('output/', views.output),
     path('outputcsv/', views.outputcsv),
     path('outputnumber/', views.outputnumber),

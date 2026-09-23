@@ -1,24 +1,47 @@
 async function verifyFile() {
-    // get the uploaded file
-    let fileInput = document.getElementsByName("csv")[0];
-    let file = fileInput.files[0];
-    console.log("Verifying...");
-    const response = await fetch('/verifyFile/?filename=' + file); 
-    let responseJSON = await response.json(); 
+    const fileInput = document.getElementsByName("csv")[0];
+    const usernametext = document.getElementById('usernametext');
 
-    let usernametext = document.getElementById('usernametext');
-
-    // The .error class sets colour with !important, so an inline style cannot
-    // override it. Toggle the class instead, otherwise a successful check
-    // still renders red and reads as a failure.
-    if(responseJSON['message'] == 'Valid') {
-        usernametext.classList.remove('error');
-        usernametext.style.color = 'green';
-    } else {
-        usernametext.classList.add('error');
-        usernametext.style.color = '';
+    function report(message, ok) {
+        // .error sets colour with !important, so toggle the class rather
+        // than trying to override it with an inline style.
+        if (ok) {
+            usernametext.classList.remove('error');
+            usernametext.style.color = 'green';
+        } else {
+            usernametext.classList.add('error');
+            usernametext.style.color = '';
+        }
+        usernametext.innerHTML = message;
     }
 
-    // Set the text's content to the message
-    usernametext.innerHTML = responseJSON["message"]; 
+    const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+    if (!file) {
+        report('No file selected', false);
+        return;
+    }
+
+    // The file's contents have to reach the server, so post it as form data.
+    // This previously interpolated the File object into a query string, which
+    // stringifies to "[object File]" and hit a route that did not exist.
+    const body = new FormData();
+    body.append('csv', file);
+
+    const csrf_token = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    try {
+        const response = await fetch('/verifyFile/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf_token },
+            mode: 'same-origin',
+            body: body
+        });
+
+        const responseJSON = await response.json();
+        const message = responseJSON['message'];
+        report(message, message === 'Valid');
+    } catch (err) {
+        report('Could not reach the server', false);
+    }
 }

@@ -143,7 +143,7 @@
                     <span class="input-group-text" id="polyPrefix">f(x) =</span>
                     <input type="text" class="form-control" id="polynomial" name="polynomial" aria-describedby="polyPrefix">
                 </div>
-                <small id="usernametext" class="form-text error" style="color: #D30000;"></small>
+                <small id="usernametext" class="form-text error" style="color: #D30000;">{% if error %}{{ error }}{% endif %}</small>
                 <div class="form-group mt-1">
                     <div class="tab-content" id="myTabContent">
                         <div class="tab-pane fade show active" id="number" role="tabpanel" aria-labelledby="number-tab">

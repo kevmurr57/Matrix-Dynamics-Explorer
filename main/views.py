@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse, JsonResponse
 from django.template import loader
-from .controller.parseTree.readMatrices import convert, csvToMatrices
+from .controller.parseTree.readMatrices import convert, csvToMatrices, validateCsvUpload
 from .controller import iterationController
 from .controller.parseTree.parseTree import ParseTree
 from .models import Iteration
@@ -148,8 +148,26 @@ def fetchOutput(request):
     return JsonResponse(response)
 
 
+def verifyFile(request):
+    """Validate an uploaded CSV without starting any work.
+
+    Mirrors verifyPoly: the browser posts the file and gets back either
+    'Valid' or a message naming the offending line.
+    """
+    problem = validateCsvUpload(request.FILES.get('csv'))
+
+    return JsonResponse({'message': problem or 'Valid'})
+
+
 def csvPoly(request):
-    csv = request.FILES['csv']
+    csv = request.FILES.get('csv')
+
+    # Same check the verify button runs, so a batch cannot be started from a
+    # file that would silently reshape into the wrong matrices.
+    problem = validateCsvUpload(csv)
+    if problem:
+        return render(request, 'index.html', {'error': problem})
+
     matrices = csvToMatrices(csv)
     ids = []
 

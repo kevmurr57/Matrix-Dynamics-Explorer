@@ -3,7 +3,7 @@ from django.db import transaction
 from .controller.parseTree.parseTree import ParseTree
 import numpy as np
 from .controller.parseTree.maxIteration import MaxIteration, decodeValue
-from .controller.parseTree.readMatrices import readFile
+from .controller.parseTree.readMatrices import readFile, validateCsvUpload
 from .controller.parseTree.outputCsv import toCsv
 import json
 from .models import Iteration, IterationStep
@@ -385,6 +385,85 @@ class DivergenceClassificationTestCase(TestCase):
     def testMatrixCycleDetected(self):
         a = np.array([[1.0, 0.0], [0.0, 1.0]])
         self.assertTrue(self.iterator.hasCycle([a, a * 2, a]))
+
+
+class CsvValidationTestCase(TestCase):
+    """The Verify File button had no endpoint behind it and csvPoly accepted
+    anything, reshaping malformed rows into silently wrong matrices."""
+
+    def upload(self, name, data):
+        return SimpleUploadedFile(name, data, content_type='text/csv')
+
+    def testAcceptsSquareMatrices(self):
+        f = self.upload('m.csv', b'1,0,0,1\n2,0,0,0,2,0,0,0,2\n')
+        self.assertIsNone(validateCsvUpload(f))
+
+    def testRejectsMissingFile(self):
+        self.assertEqual(validateCsvUpload(None), 'No file selected')
+
+    def testRejectsEmptyFile(self):
+        self.assertEqual(validateCsvUpload(self.upload('m.csv', b'')), 'File is empty')
+
+    def testRejectsNonSquareRowAndNamesTheLine(self):
+        f = self.upload('m.csv', b'1,0,0,1\n2,0,1\n')
+        self.assertIn('Line 2', validateCsvUpload(f))
+
+    def testRejectsNonNumericValue(self):
+        f = self.upload('m.csv', b'1,0,0,abc\n')
+        self.assertIn('not a number', validateCsvUpload(f))
+
+    def testRejectsWrongExtension(self):
+        f = self.upload('m.txt', b'1,0,0,1\n')
+        self.assertEqual(validateCsvUpload(f), 'File must be a .csv')
+
+    def testRejectsTooManyRows(self):
+        f = self.upload('m.csv', b'1,0,0,1\n' * 600)
+        self.assertIn('Too many rows', validateCsvUpload(f))
+
+    # the real fixture that has always had a malformed final row
+    def testRejectsTestFileFixture(self):
+        with open('testFile.csv', 'rb') as handle:
+            f = self.upload('testFile.csv', handle.read())
+        self.assertIsNotNone(validateCsvUpload(f))
+
+    def testAcceptsIdentitiesFixture(self):
+        with open('testIdentities.csv', 'rb') as handle:
+            f = self.upload('testIdentities.csv', handle.read())
+        self.assertIsNone(validateCsvUpload(f))
+
+    # validation reads the file, so it must rewind for the caller that parses it
+    def testFileIsRewoundAfterValidation(self):
+        f = self.upload('m.csv', b'1,0,0,1\n')
+        validateCsvUpload(f)
+        self.assertEqual(f.read(), b'1,0,0,1\n')
+
+
+class VerifyFileEndpointTestCase(TestCase):
+
+    def testValidFileReturnsValid(self):
+        f = SimpleUploadedFile('m.csv', b'1,0,0,1\n', content_type='text/csv')
+        response = Client().post('/verifyFile/', {'csv': f})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['message'], 'Valid')
+
+    def testInvalidFileReturnsReason(self):
+        f = SimpleUploadedFile('m.csv', b'2,0,1\n', content_type='text/csv')
+        response = Client().post('/verifyFile/', {'csv': f})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Line 1', response.json()['message'])
+
+    def testMissingFileReturnsReason(self):
+        response = Client().post('/verifyFile/', {})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['message'], 'No file selected')
+
+    # csvPoly used to raise MultiValueDictKeyError on a missing file
+    def testCsvPolyRejectsBadFileInsteadOfCrashing(self):
+        f = SimpleUploadedFile('m.csv', b'2,0,1\n', content_type='text/csv')
+        response = Client().post('/csvPoly/', {
+            'csv': f, 'polynomial': '2x', 'maxIter': '5', 'threshold': '0.1',
+        })
+        self.assertEqual(response.status_code, 200)
 
 
 class ViewsTestCase(TestCase):
