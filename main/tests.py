@@ -346,6 +346,47 @@ class IterationValueTestCase(TestCase):
         self.assertEqual(len(results), 80)
 
 
+class DivergenceClassificationTestCase(TestCase):
+    """The outcome label must match what the numbers actually do. The old
+    check only asked whether any value repeated, so a run that simply had not
+    reached the threshold was reported as diverging to infinity."""
+
+    def setUp(self):
+        self.iterator = MaxIteration()
+
+    # 0.5x from 2.0 converges toward zero
+    def testConvergingSequenceIsNotInfinite(self):
+        values = [str(2.0 * 0.5 ** n) for n in range(30)]
+        self.assertFalse(self.iterator.isInfiniteDivergenceNum(values))
+
+    def testConvergingSequenceHasNoCycle(self):
+        values = [str(2.0 * 0.5 ** n) for n in range(30)]
+        self.assertFalse(self.iterator.hasCycleNum(values))
+
+    # 2x from 1.0 genuinely runs away
+    def testGrowingSequenceIsInfinite(self):
+        values = [str(2.0 ** n) for n in range(40)]
+        self.assertTrue(self.iterator.isInfiniteDivergenceNum(values))
+
+    def testRepeatingSequenceIsACycle(self):
+        values = ['1.0', '2.0', '1.0', '2.0']
+        self.assertTrue(self.iterator.hasCycleNum(values))
+
+    def testRepeatingSequenceIsNotInfinite(self):
+        values = ['1.0', '2.0', '1.0', '2.0']
+        self.assertFalse(self.iterator.isInfiniteDivergenceNum(values))
+
+    # ndarray.tostring() was removed in numpy 2; this used to raise
+    def testMatrixHelpersRunOnNumpy2(self):
+        matrices = [np.array([[1.0, 0.0], [0.0, 1.0]]) * (2 ** n) for n in range(6)]
+        self.assertFalse(self.iterator.hasCycle(matrices))
+        self.assertIsInstance(self.iterator.isInfiniteDivergence(matrices), bool)
+
+    def testMatrixCycleDetected(self):
+        a = np.array([[1.0, 0.0], [0.0, 1.0]])
+        self.assertTrue(self.iterator.hasCycle([a, a * 2, a]))
+
+
 class ViewsTestCase(TestCase):
 
     # test whether Views can return the index page

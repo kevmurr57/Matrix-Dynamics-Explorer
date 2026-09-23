@@ -198,16 +198,37 @@ class MaxIteration():
         return res
     
     # Returns whether the divergence approaches infinity or repeats
-    def isInfiniteDivergence(self, matrices):
+    # A repeated value means the sequence has entered a periodic orbit.
+    def hasCycle(self, matrices):
         visited = set()
         for matrix in matrices:
-            mstr = matrix.tostring()
-            if mstr in visited:
-                return False
+            key = np.asarray(matrix).tobytes()
+            if key in visited:
+                return True
+            visited.add(key)
+        return False
 
-            visited.add(mstr)
+    # Growing without bound, judged on the matrix norm. ndarray.tostring() was
+    # also removed in numpy 2, so the old version raised AttributeError here.
+    def isInfiniteDivergence(self, matrices):
+        norms = [float(np.linalg.norm(np.asarray(m))) for m in matrices]
+        return self._growsWithoutBound(norms)
 
-        return True
+    @staticmethod
+    def _growsWithoutBound(magnitudes):
+        if len(magnitudes) < 3:
+            return False
+
+        last = magnitudes[-1]
+
+        if not np.isfinite(last):
+            return True
+
+        tail = magnitudes[-3:]
+        growing = all(tail[i] < tail[i + 1] for i in range(len(tail) - 1))
+
+        start = max(abs(magnitudes[0]), 1.0)
+        return growing and last > start * 1e6
     
     # Returns the difference for a number iteration
     def getDifference(self, numbers):
@@ -218,12 +239,23 @@ class MaxIteration():
         return res
     
     # Returns whether the divergence approaches infinity or repeats
-    def isInfiniteDivergenceNum(self, numbers):
+    def hasCycleNum(self, numbers):
         visited = set()
         for num in numbers:
-            if num in visited:
-                return False
+            key = str(num)
+            if key in visited:
+                return True
+            visited.add(key)
+        return False
 
-            visited.add(num)
-
-        return True
+    # Previously this just reported "no repeated value", so any run that
+    # merely failed to reach the threshold was labelled as diverging to
+    # infinity — including sequences visibly converging toward zero.
+    def isInfiniteDivergenceNum(self, numbers):
+        magnitudes = []
+        for num in numbers:
+            value = decodeValue(num)
+            if isinstance(value, np.ndarray):
+                value = float(np.linalg.norm(value))
+            magnitudes.append(abs(float(value)))
+        return self._growsWithoutBound(magnitudes)

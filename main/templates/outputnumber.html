@@ -32,15 +32,19 @@
 
         let converged = responseJson['converged'];
         let infinite = responseJson['infinite'];
+        let cycle = responseJson['cycle'];
 
         if(converged) {
             results.innerHTML = 'The Iteration Ended Up Converging';
+        }
+        else if(cycle) {
+            results.innerHTML = 'The Iteration Ended Up Diverging in a Cycle';
         }
         else if(infinite) {
             results.innerHTML = 'The Iteration Ended Up Diverging Towards Infinity';
         }
         else {
-            results.innerHTML = 'The Iteration Ended Up Diverging in a Cycle';
+            results.innerHTML = 'The Iteration Did Not Converge Within the Iteration Limit';
         }
 
         nums = responseJson['numbers'];

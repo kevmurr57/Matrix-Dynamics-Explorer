@@ -38,6 +38,7 @@
         let convergeValue = responseJSON['convergeValue'];
 
         let infinite = responseJSON['infinite'];
+        let cycle = responseJSON['cycle'];
 
         eigenvalues = responseJSON['eigenvalues'];
         eigenvalues = JSON.parse(eigenvalues);
@@ -59,11 +60,14 @@
         if(converged) {
             results.innerHTML = 'The Iteration Ended Up Converging';
         }
+        else if(cycle) {
+            results.innerHTML = 'The Iteration Ended Up Diverging in a Cycle';
+        }
         else if(infinite) {
             results.innerHTML = 'The Iteration Ended Up Diverging Towards Infinity';
         }
         else {
-            results.innerHTML = 'The Iteration Ended Up Diverging in a Cycle';
+            results.innerHTML = 'The Iteration Did Not Converge Within the Iteration Limit';
         }
 
         //console.log(typeof(matrices))

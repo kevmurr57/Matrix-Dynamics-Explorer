@@ -4,15 +4,20 @@ async function verifyPoly() {
     // We must convert any plus signs 
     polynomial = convertPlusSigns(polynomial);
 
-    const response = await fetch('https://mde.up.railway.app/verifyPoly/?polynomial=' + polynomial); 
+    const response = await fetch('/verifyPoly/?polynomial=' + polynomial); 
     let responseJSON = await response.json(); 
 
     let usernametext = document.getElementById('usernametext');
 
+    // The .error class sets colour with !important, so an inline style cannot
+    // override it. Toggle the class instead, otherwise a successful check
+    // still renders red and reads as a failure.
     if(responseJSON['message'] == 'Valid') {
-        // We change the text to green, indicating a valid poly
-        console.log(usernametext.style);
+        usernametext.classList.remove('error');
         usernametext.style.color = 'green';
+    } else {
+        usernametext.classList.add('error');
+        usernametext.style.color = '';
     }
 
     // Set the text's content to the message

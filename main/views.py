@@ -141,7 +141,8 @@ def fetchOutput(request):
         'converged': converged, 
         'convergeValue': convergeValue,
         'eigenvalues': json.dumps(eigenvalues),
-        'infinite': iterationObj.isInfiniteDivergence(matrices)
+        'infinite': iterationObj.isInfiniteDivergence(matrices),
+        'cycle': iterationObj.hasCycle(matrices)
     }
 
     return JsonResponse(response)
@@ -215,12 +216,14 @@ def fetchNumber(request):
     converged = iterationController.getConverged(id)
     convergeValue = iterationObj.getConvergeValue(id)
     infinite = iterationObj.isInfiniteDivergenceNum(values)
+    cycle = iterationObj.hasCycleNum(values)
 
     response = {
         'numbers': json.dumps(diff),
         'converged': converged,
         'convergeValue': convergeValue,
-        'infinite': infinite
+        'infinite': infinite,
+        'cycle': cycle
     }
 
     return JsonResponse(response)
